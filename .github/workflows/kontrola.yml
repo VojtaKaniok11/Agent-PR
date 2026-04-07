@@ -1,0 +1,29 @@
+name: Email Check Agent
+
+on:
+  schedule:
+    # 15:00 českého času je v létě 13:00 UTC
+    - cron: "0 13 * * *"
+  workflow_dispatch: # Přidá tlačítko v prohlížeči pro ruční spuštění
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3 # Stáhne tvůj kód do toho virt. PC
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20" # Verze Node.js
+
+      - name: Install dependencies
+        run: npm install # Nainstaluje LangChain a další věci z package.json
+
+      - name: Run Agent
+        env:
+          # Propojení tajných hesel z GitHubu do tvého kódu
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: npx ts-node src/index.ts # Spustí tvůj skript (změň cestu k souboru)
