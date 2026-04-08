@@ -10,14 +10,17 @@ const AgentState = Annotation.Root({
   isPayroll: Annotation<boolean>({ reducer: (x, y) => y, default: () => false }),
 });
 
-// 1. KROK: Stažení posledních 10 emailů včetně informace, zda jsou přečtené
+// 1. KROK: Stažení posledních 10 emailů
 async function fetchLatestEmails() {
   console.log("🔍 Kontroluji poštu (posledních 10 zpráv)...");
   const client = new ImapFlow({
     host: "imap.seznam.cz",
     port: 993,
     secure: true,
-    auth: { user: process.env.SEZNAM_EMAIL!, pass: process.env.SEZNAM_PASSWORD! },
+    auth: { 
+      user: process.env.EMAIL_USER!, // Změněno
+      pass: process.env.EMAIL_PASS!  // Změněno
+    },
     logger: false
   });
 
@@ -28,15 +31,12 @@ async function fetchLatestEmails() {
   try {
     const status = await client.status('INBOX', { messages: true });
     const total = status.messages;
-    // Vezmeme rozsah posledních 10 zpráv
     const range = `${Math.max(1, total - 9)}:${total}`;
 
-    // DŮLEŽITÉ: Přidali jsme flags: true, abychom věděli, zda je mail přečtený
     for await (let msg of client.fetch(range, { envelope: true, flags: true })) {
       emails.push({ 
         subject: msg.envelope?.subject || "", 
         from: msg.envelope?.from?.[0]?.address || "",
-        // Pokud flagy NEobsahují \Seen, mail je NEPŘEČTENÝ
         isUnread: !msg.flags.has("\\Seen")
       });
     }
@@ -45,13 +45,11 @@ async function fetchLatestEmails() {
   }
 
   await client.logout();
-  // Otočíme pořadí, aby nejnovější byly první
   return { foundEmails: emails.reverse() };
 }
 
-// 2. KROK: Filtrace nepřečtených a analýza pomocí AI
+// 2. KROK: Filtrace a AI analýza
 async function analyzeWithFilterAndAI(state: typeof AgentState.State) {
-  // FILTR: Necháme si jen ty, které jsou nepřečtené
   const unreadEmails = state.foundEmails.filter(e => e.isUnread);
 
   if (unreadEmails.length === 0) {
@@ -62,25 +60,19 @@ async function analyzeWithFilterAndAI(state: typeof AgentState.State) {
   const subjects = unreadEmails.map(e => e.subject.toLowerCase()).join(" ");
   const keywords = ["výplat", "mzda", "páska", "vyúčtování"];
 
-  // Rychlá kontrola na klíčová slova v nepřečtených mailech
   if (!keywords.some(kw => subjects.includes(kw))) {
     console.log(`ℹ️ Prohledáno ${unreadEmails.length} nepřečtených zpráv, ale žádná nevypadá jako výplatnice.`);
     return { isPayroll: false };
   }
 
-  console.log("🤖 Našel jsem nepřečtený e-mail, který by mohl být výplatnicí. Ptám se AI...");
+  console.log("🤖 Našel jsem nepřečtený e-mail. Ptám se AI...");
   
+  // ChatOpenAI si automaticky vezme OPENAI_API_KEY z environmentu (YAML)
   const llm = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0 });
   const fullText = unreadEmails.map(e => `Od: ${e.from}, Předmět: ${e.subject}`).join("\n");
   
   const response = await llm.invoke(`Je v tomto seznamu výplatní páska? Odpověz ANO nebo NE:\n\n${fullText}`);
   const answer = response.content.toString().toUpperCase().includes("ANO");
-
-  if (answer) {
-    console.log("✅ AI potvrdila výplatnici!");
-  } else {
-    console.log("❌ AI říká, že to výplatnice není.");
-  }
 
   return { isPayroll: answer };
 }
@@ -88,7 +80,7 @@ async function analyzeWithFilterAndAI(state: typeof AgentState.State) {
 // 3. KROK: Notifikace na Discord
 async function notifyDiscord(state: typeof AgentState.State) {
   if (state.isPayroll) {
-    await fetch(process.env.DISCORD_WEBHOOK_URL!, {
+    await fetch(process.env.DISCORD_WEBHOOK!, { // Změněno
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: "🔔 **Výplatnice dorazila a je nepřečtená!** 💰" }),
@@ -97,7 +89,6 @@ async function notifyDiscord(state: typeof AgentState.State) {
   }
 }
 
-// Sestavení grafu (workflow)
 const workflow = new StateGraph(AgentState)
   .addNode("fetch", fetchLatestEmails)
   .addNode("analyze", analyzeWithFilterAndAI)
@@ -109,8 +100,7 @@ const workflow = new StateGraph(AgentState)
 
 const app = workflow.compile();
 
-// Spuštění
 app.invoke({}).then(() => {
-    console.log("🏁 Kontrola hotova. Program se ukončuje.");
+    console.log("🏁 Kontrola hotova.");
     process.exit(0);
 });

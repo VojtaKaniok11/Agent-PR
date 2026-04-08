@@ -4,26 +4,27 @@ on:
   schedule:
     # 15:00 českého času je v létě 13:00 UTC
     - cron: "0 13 * * *"
-  workflow_dispatch: # Přidá tlačítko v prohlížeči pro ruční spuštění
+  workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3 # Stáhne tvůj kód do toho virt. PC
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: "20" # Verze Node.js
+          node-version: "20"
 
       - name: Install dependencies
-        run: npm install # Nainstaluje LangChain a další věci z package.json
+        run: npm install
 
       - name: Run Agent
         env:
-          # Propojení tajných hesel z GitHubu do tvého kódu
+          # Tady to musí přesně sedět na tvou fotku ze Secrets!
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: npx tsx index.ts # Spustí tvůj skript (změň cestu k souboru)
+          OPENAI_API_KEY: ${{ secrets.API_KEY }}
+        run: npx tsx index.ts
